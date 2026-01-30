@@ -7,12 +7,20 @@ import jwt from "jsonwebtoken"
 export async function POST(req: Request) {
   try {
     await connectDB()
+
     const { email, password } = await req.json()
 
-    const user = await User.findOne({ email, isActive: true })
+    if (!email || !password) {
+      return NextResponse.json(
+        { message: "Email and password required" },
+        { status: 400 }
+      )
+    }
+
+    const user = await User.findOne({ email })
     if (!user) {
       return NextResponse.json(
-        { message: "Invalid credentials" },
+        { message: "User not found" },
         { status: 401 }
       )
     }
@@ -20,16 +28,13 @@ export async function POST(req: Request) {
     const isMatch = await bcrypt.compare(password, user.password)
     if (!isMatch) {
       return NextResponse.json(
-        { message: "Invalid credentials" },
+        { message: "Wrong password" },
         { status: 401 }
       )
     }
 
     const token = jwt.sign(
-      {
-        userId: user._id,
-        role: user.role,
-      },
+      { userId: user._id, role: user.role },
       process.env.JWT_SECRET!,
       { expiresIn: "7d" }
     )
@@ -44,6 +49,7 @@ export async function POST(req: Request) {
       },
     })
   } catch (error) {
+    console.error("LOGIN ERROR:", error)
     return NextResponse.json(
       { message: "Login failed" },
       { status: 500 }

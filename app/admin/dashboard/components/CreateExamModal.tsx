@@ -30,36 +30,48 @@ export function CreateExamModal({ isOpen, onClose }: CreateExamModalProps) {
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    try {
-      // Create new exam object
-      const newExam: Omit<Exam, 'id'> = {
-        slug: formData.slug,
+  try {
+    const res = await fetch("/api/admin/exams", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        slug: formData.slug,   // backend ignore karega agar generateSlug use ho
         logo: formData.logo,
         name: formData.name,
         title: formData.title,
-        mode: formData.mode as "Online" | "Offline",
+        mode: formData.mode,
         date: formData.date,
-      };
+      }),
+    });
 
-      // In a real app, this would be an API call
-      console.log("Creating exam:", newExam);
+    const data = await res.json();
 
-      // Reset form and close modal
-      setFormData({
-        slug: "",
-        logo: "",
-        name: "",
-        title: "",
-        mode: "",
-        date: "",
-      });
-      onClose();
-    } catch (error) {
-      console.error("Error creating exam:", error);
+    if (!res.ok) {
+      alert(data.message || "Failed to create exam");
+      return;
     }
-  };
+    
+    // success
+    setFormData({
+      slug: "",
+      logo: "",
+      name: "",
+      title: "",
+      mode: "",
+      date: "",
+    });
+    alert("Exam created successfully ");
+    onClose();
+  } catch (error) {
+    console.error("Error creating exam:", error);
+    alert("Something went wrong");
+  }
+};
+
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({

@@ -12,8 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { College } from "@/app/context/CollegeContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import slugify from "slugify";
 
 interface CreateCollegeModalProps {
   isOpen: boolean;
@@ -32,39 +38,83 @@ export function CreateCollegeModal({ isOpen, onClose }: CreateCollegeModalProps)
     address: "",
     pincode: "",
     phone: "",
+    imageUrl: "",
+    fees: "",
+    exams: "",
   });
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
-      // Create new college object
-      const newCollege: Omit<College, 'id'> = {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("You are not logged in");
+        return;
+      }
+
+      const [city = "", state = ""] = formData.location.split(",");
+
+      const payload = {
         name: formData.name,
-        location: formData.location,
-        type: formData.type as "Private" | "Public",
-        established: formData.established,
-        ranking: formData.ranking,
-        courseCount: parseInt(formData.courseCount) || 0,
-        description: formData.description,
-        highlights: [
-          { parameter: "Acceptance Rate", value: "TBD" },
-          { parameter: "Total Students", value: "TBD" },
-        ],
-        newsArticles: [],
-        contactInfo: {
+        slug: slugify(formData.name, { lower: true, strict: true }),
+        type: formData.type === "Public" ? "Government" : formData.type,
+        overview: formData.description,
+        location: {
+          city: city.trim(),
+          state: state.trim(),
           address: formData.address,
           pincode: formData.pincode,
-          phone: formData.phone,
-          phoneNote: "",
-          mapImageUrl: ""
-        }
+        },
+        placements: {
+          fees: Number(formData.fees) || 0,
+          admission_process: "TBD",
+        },
+        exams: formData.exams
+          ? formData.exams.split(",").map((e) => e.trim())
+          : [],
+        established: Number(formData.established) || 1851,
+        ranking: {
+          text: formData.ranking || "",
+          nirf: 0,
+          qsWorld: 0,
+          timesWorld: 0,
+        },
+        courseCount: Number(formData.courseCount) || 0,
+        phone: formData.phone,
+        imageUrl: formData.imageUrl,
+        is_active: true,
+        created_by: localStorage.getItem("userId") || "696f2c527ee38a0de4fee9d3",
       };
 
-      // In a real app, this would be an API call
-      console.log("Creating college:", newCollege);
+      console.log("🎓 Creating college:", payload);
 
-      // Reset form and close modal
+      const res = await fetch("/api/admin/colleges", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      // SAFE RESPONSE HANDLING
+      let data: any = null;
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        console.warn("Response is not JSON");
+      }
+
+      if (!res.ok) throw new Error(data?.message || "Failed to create college");
+
+      alert("✅ College created successfully!");
+
       setFormData({
         name: "",
         location: "",
@@ -76,18 +126,19 @@ export function CreateCollegeModal({ isOpen, onClose }: CreateCollegeModalProps)
         address: "",
         pincode: "",
         phone: "",
+        imageUrl: "",
+        fees: "",
+        exams: "",
       });
-      onClose();
-    } catch (error) {
-      console.error("Error creating college:", error);
-    }
-  };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+      onClose();
+
+      // Trigger refresh in admin table
+      window.dispatchEvent(new Event("collegeCreated"));
+    } catch (error: any) {
+      console.error("❌ Error creating college:", error);
+      alert(error.message);
+    }
   };
 
   return (
@@ -95,131 +146,129 @@ export function CreateCollegeModal({ isOpen, onClose }: CreateCollegeModalProps)
       <SheetContent className="sm:max-w-[600px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Create New College</SheetTitle>
-          <SheetDescription>
-            Add a new college to the platform. Fill in all the required information below.
-          </SheetDescription>
+          <SheetDescription>Add a new college to the platform</SheetDescription>
         </SheetHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6 p-[20px] mt-6">
+        <form onSubmit={handleSubmit} className="space-y-6 p-5 mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">College Name *</Label>
+            <div>
+              <Label>College Name *</Label>
               <Input
-                id="name"
                 value={formData.name}
                 onChange={(e) => handleInputChange("name", e.target.value)}
-                placeholder="Enter college name"
                 required
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="location">Location *</Label>
+            <div>
+              <Label>Location *</Label>
               <Input
-                id="location"
                 value={formData.location}
                 onChange={(e) => handleInputChange("location", e.target.value)}
-                placeholder="City, State, Country"
+                placeholder="City, State"
                 required
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="type">Type *</Label>
-              <Select value={formData.type} onValueChange={(value) => handleInputChange("type", value)}>
+            <div>
+              <Label>Type *</Label>
+              <Select
+                value={formData.type}
+                onValueChange={(v) => handleInputChange("type", v)}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select college type" />
+                  <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Private">Private</SelectItem>
-                  <SelectItem value="Public">Public</SelectItem>
+                  <SelectItem value="Government">Government</SelectItem>
+                  <SelectItem value="Deemed">Deemed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="established">Established Year</Label>
+            <div>
+              <Label>Established</Label>
               <Input
-                id="established"
                 value={formData.established}
                 onChange={(e) => handleInputChange("established", e.target.value)}
-                placeholder="e.g., 1850"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="ranking">Ranking</Label>
+            <div>
+              <Label>Ranking</Label>
               <Input
-                id="ranking"
                 value={formData.ranking}
                 onChange={(e) => handleInputChange("ranking", e.target.value)}
-                placeholder="e.g., #1"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="courseCount">Number of Courses</Label>
+            <div>
+              <Label>Course Count</Label>
               <Input
-                id="courseCount"
                 type="number"
                 value={formData.courseCount}
                 onChange={(e) => handleInputChange("courseCount", e.target.value)}
-                placeholder="e.g., 150"
               />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Description *</Label>
+          <div>
+            <Label>Description *</Label>
             <Textarea
-              id="description"
               value={formData.description}
               onChange={(e) => handleInputChange("description", e.target.value)}
-              placeholder="Brief description of the college"
-              rows={3}
               required
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="address">Address</Label>
+            <div>
+              <Label>Annual Fees</Label>
               <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => handleInputChange("address", e.target.value)}
-                placeholder="Full address"
+                value={formData.fees}
+                onChange={(e) => handleInputChange("fees", e.target.value)}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="pincode">Pincode</Label>
+            <div>
+              <Label>Accepted Exams</Label>
               <Input
-                id="pincode"
-                value={formData.pincode}
-                onChange={(e) => handleInputChange("pincode", e.target.value)}
-                placeholder="123456"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => handleInputChange("phone", e.target.value)}
-                placeholder="+1 (123) 456-7890"
+                value={formData.exams}
+                onChange={(e) => handleInputChange("exams", e.target.value)}
+                placeholder="JEE, CUET"
               />
             </div>
           </div>
 
-          <div className="flex justify-end space-x-2 pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              placeholder="Address"
+              value={formData.address}
+              onChange={(e) => handleInputChange("address", e.target.value)}
+            />
+            <Input
+              placeholder="Pincode"
+              value={formData.pincode}
+              onChange={(e) => handleInputChange("pincode", e.target.value)}
+            />
+            <Input
+              placeholder="Phone"
+              value={formData.phone}
+              onChange={(e) => handleInputChange("phone", e.target.value)}
+            />
+            <Input
+              placeholder="Image URL"
+              value={formData.imageUrl}
+              onChange={(e) => handleInputChange("imageUrl", e.target.value)}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit">
-              Create College
-            </Button>
+            <Button type="submit">Create College</Button>
           </div>
         </form>
       </SheetContent>
